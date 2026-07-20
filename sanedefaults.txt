@@ -1,0 +1,358 @@
+#!/bin/zsh
+# Portable macOS preferences exported from macOS 26.5.2 (build 25F84).
+# Source hardware: Apple M2 MacBook Air (Mac14,2).
+# Run with: zsh sanedefaults.txt
+# Preview without changing anything: zsh sanedefaults.txt --check
+# On another macOS major version, review the keys and use --force to proceed.
+
+set -eu
+
+check_only=false
+force_version=false
+
+for argument in "$@"; do
+  case "$argument" in
+    --check) check_only=true ;;
+    --force) force_version=true ;;
+    *)
+      print -u2 "Unknown option: $argument"
+      print -u2 "Usage: zsh sanedefaults.txt [--check] [--force]"
+      exit 64
+      ;;
+  esac
+done
+
+apply_command() {
+  if $check_only; then
+    printf '%q ' "$@"
+    printf '\n'
+  else
+    "$@"
+  fi
+}
+
+source_macos_major=26
+target_macos_version="$(sw_vers -productVersion)"
+target_macos_major="${target_macos_version%%.*}"
+
+if [[ "$target_macos_major" != "$source_macos_major" ]] && ! $force_version; then
+  print -u2 "This file was exported on macOS 26.5.2; target is macOS $target_macos_version."
+  print -u2 "Preference keys can change between major releases. Review the file, then rerun with --force."
+  exit 65
+fi
+
+if ! $check_only && pgrep -x Safari >/dev/null 2>&1; then
+  print -u2 "Quit Safari before applying these preferences so it does not overwrite them."
+  exit 69
+fi
+
+print "Applying preferences exported from macOS 26.5.2 to macOS $target_macos_version"
+
+# GENERAL, KEYBOARD, AND TEXT INPUT
+
+# Use traditional scrolling: content moves in the direction opposite to finger movement.
+apply_command defaults write -g com.apple.swipescrolldirection -bool false
+
+# Disable press-and-hold accent menus so holding a key repeats it instead.
+apply_command defaults write -g ApplePressAndHoldEnabled -bool false
+
+# Do not minimize a window when its title bar is double-clicked.
+apply_command defaults write -g AppleMiniaturizeOnDoubleClick -bool false
+
+# Restore an application's windows when reopening the application.
+apply_command defaults write -g NSQuitAlwaysKeepsWindows -bool true
+
+# Enable automatic capitalization while typing.
+apply_command defaults write -g NSAutomaticCapitalizationEnabled -bool true
+
+# Enable automatic conversion of double hyphens to typographic dashes.
+apply_command defaults write -g NSAutomaticDashSubstitutionEnabled -bool true
+
+# Enable adding a period after typing two spaces.
+apply_command defaults write -g NSAutomaticPeriodSubstitutionEnabled -bool true
+
+# Enable automatic smart quotes.
+apply_command defaults write -g NSAutomaticQuoteSubstitutionEnabled -bool true
+
+# Enable automatic spelling correction.
+apply_command defaults write -g NSAutomaticSpellingCorrectionEnabled -bool true
+
+# Enable inline text-completion suggestions.
+apply_command defaults write -g NSAutomaticTextCompletionEnabled -bool true
+
+# FINDER
+
+# Show all filename extensions in Finder and other standard file panels.
+apply_command defaults write -g AppleShowAllExtensions -bool true
+
+# Hide Unix hidden files in Finder; this source key was unset, whose effective macOS 26 behavior is false.
+apply_command defaults write com.apple.finder AppleShowAllFiles -bool false
+
+# Show Finder's path bar.
+apply_command defaults write com.apple.finder ShowPathbar -bool true
+
+# Hide Finder's status bar.
+apply_command defaults write com.apple.finder ShowStatusBar -bool false
+
+# Search the current folder by default in Finder (SCcf).
+apply_command defaults write com.apple.finder FXDefaultSearchScope -string SCcf
+
+# Use column view as Finder's preferred view style (clmv).
+apply_command defaults write com.apple.finder FXPreferredViewStyle -string clmv
+
+# Open new Finder windows at the source machine's Documents smart location (PfAF).
+apply_command defaults write com.apple.finder NewWindowTarget -string PfAF
+
+# Use macOS's portable Documents smart-location URL for new Finder windows.
+apply_command defaults write com.apple.finder NewWindowTargetPath -string 'file:///System/Library/CoreServices/Finder.app/Contents/Resources/MyLibraries/myDocuments.cannedSearch/'
+
+# Show internal hard disks on the desktop.
+apply_command defaults write com.apple.finder ShowHardDrivesOnDesktop -bool true
+
+# Show external hard disks on the desktop.
+apply_command defaults write com.apple.finder ShowExternalHardDrivesOnDesktop -bool true
+
+# Show removable media on the desktop.
+apply_command defaults write com.apple.finder ShowRemovableMediaOnDesktop -bool true
+
+# DOCK AND MISSION CONTROL
+
+# Keep the Dock visible instead of automatically hiding it.
+apply_command defaults write com.apple.dock autohide -bool false
+
+# Enable Dock icon magnification.
+apply_command defaults write com.apple.dock magnification -bool true
+
+# Set normal Dock icon size to 34 points.
+apply_command defaults write com.apple.dock tilesize -int 34
+
+# Set magnified Dock icon size to 98 points.
+apply_command defaults write com.apple.dock largesize -int 98
+
+# Enable the trackpad App Expose gesture.
+apply_command defaults write com.apple.dock showAppExposeGestureEnabled -bool true
+
+# SCREENSHOTS
+
+# Send screenshots to the clipboard instead of saving image files.
+apply_command defaults write com.apple.screencapture target -string clipboard
+
+# Start the Screenshot interface in selection mode.
+apply_command defaults write com.apple.screencapture style -string selection
+
+# Default the Screenshot interface to still images rather than video.
+apply_command defaults write com.apple.screencapture video -bool false
+
+# SAFARI
+
+# Safari: ask where to save every download. Because this is enabled, no fixed download directory is active or exported.
+apply_command defaults write com.apple.Safari.SandboxBroker AlwaysPromptForDownloadFolder -bool true
+
+# Safari: do not automatically open files considered safe after downloading.
+apply_command defaults write com.apple.Safari AutoOpenSafeDownloads -bool false
+
+# Safari: restore the previous browsing session when Safari launches.
+apply_command defaults write com.apple.Safari AlwaysRestoreSessionAtLaunch -bool true
+
+# Safari: disable password AutoFill.
+apply_command defaults write com.apple.Safari AutoFillPasswords -bool false
+
+# Safari: show complete URLs in the Smart Search field.
+apply_command defaults write com.apple.Safari ShowFullURLInSmartSearchField -bool true
+
+# Safari: use the standard tab layout rather than narrow tabs.
+apply_command defaults write com.apple.Safari EnableNarrowTabs -bool false
+
+# Safari: do not show the sidebar automatically in new windows.
+apply_command defaults write com.apple.Safari ShowSidebarInNewWindows -bool false
+
+# Safari: enable the Develop menu.
+apply_command defaults write com.apple.Safari.SandboxBroker ShowDevelopMenu -bool true
+
+# BUILT-IN TRACKPAD (LAPTOP ONLY)
+
+if system_profiler SPHardwareDataType 2>/dev/null | grep -q 'Model Name: MacBook'; then
+  # Laptop only: enable tap-to-click on the built-in trackpad.
+  apply_command defaults write com.apple.AppleMultitouchTrackpad Clicking -bool true
+
+  # Laptop only: enable dragging with the built-in trackpad.
+  apply_command defaults write com.apple.AppleMultitouchTrackpad Dragging -bool true
+
+  # Laptop only: do not lock drag operations after fingers leave the trackpad.
+  apply_command defaults write com.apple.AppleMultitouchTrackpad DragLock -bool false
+
+  # Laptop only: enable two-finger secondary click on the built-in trackpad.
+  apply_command defaults write com.apple.AppleMultitouchTrackpad TrackpadRightClick -bool true
+
+  # Laptop only: disable corner-based secondary click.
+  apply_command defaults write com.apple.AppleMultitouchTrackpad TrackpadCornerSecondaryClick -int 0
+
+  # Laptop only: enable horizontal scrolling on the built-in trackpad.
+  apply_command defaults write com.apple.AppleMultitouchTrackpad TrackpadHorizScroll -bool true
+
+  # Laptop only: enable momentum scrolling on the built-in trackpad.
+  apply_command defaults write com.apple.AppleMultitouchTrackpad TrackpadMomentumScroll -bool true
+
+  # Laptop only: enable scrolling on the built-in trackpad.
+  apply_command defaults write com.apple.AppleMultitouchTrackpad TrackpadScroll -bool true
+
+  # Laptop only: enable pinch-to-zoom on the built-in trackpad.
+  apply_command defaults write com.apple.AppleMultitouchTrackpad TrackpadPinch -bool true
+
+  # Laptop only: enable rotation gestures on the built-in trackpad.
+  apply_command defaults write com.apple.AppleMultitouchTrackpad TrackpadRotate -bool true
+
+  # Laptop only: disable three-finger drag on the built-in trackpad.
+  apply_command defaults write com.apple.AppleMultitouchTrackpad TrackpadThreeFingerDrag -bool false
+
+  # Laptop only: use the configured three-finger horizontal swipe behavior (mode 2).
+  apply_command defaults write com.apple.AppleMultitouchTrackpad TrackpadThreeFingerHorizSwipeGesture -int 2
+
+  # Laptop only: disable the three-finger tap gesture.
+  apply_command defaults write com.apple.AppleMultitouchTrackpad TrackpadThreeFingerTapGesture -int 0
+
+  # Laptop only: use the configured three-finger vertical swipe behavior (mode 2).
+  apply_command defaults write com.apple.AppleMultitouchTrackpad TrackpadThreeFingerVertSwipeGesture -int 2
+
+  # Laptop only: use the configured four-finger horizontal swipe behavior (mode 2).
+  apply_command defaults write com.apple.AppleMultitouchTrackpad TrackpadFourFingerHorizSwipeGesture -int 2
+
+  # Laptop only: use the configured four-finger vertical swipe behavior (mode 2).
+  apply_command defaults write com.apple.AppleMultitouchTrackpad TrackpadFourFingerVertSwipeGesture -int 2
+
+  # Laptop only: use the configured four-finger pinch behavior (mode 2).
+  apply_command defaults write com.apple.AppleMultitouchTrackpad TrackpadFourFingerPinchGesture -int 2
+
+  # Laptop only: use the configured five-finger pinch behavior (mode 2).
+  apply_command defaults write com.apple.AppleMultitouchTrackpad TrackpadFiveFingerPinchGesture -int 2
+
+  # Laptop only: enable two-finger double-tap smart zoom.
+  apply_command defaults write com.apple.AppleMultitouchTrackpad TrackpadTwoFingerDoubleTapGesture -int 1
+
+  # Laptop only: enable the configured two-finger swipe from the right edge (mode 3).
+  apply_command defaults write com.apple.AppleMultitouchTrackpad TrackpadTwoFingerFromRightEdgeSwipeGesture -int 3
+
+  # Laptop only: keep the built-in trackpad enabled when a USB mouse is connected.
+  apply_command defaults write com.apple.AppleMultitouchTrackpad USBMouseStopsTrackpad -bool false
+
+  # Laptop only: enable Force Click on a compatible built-in trackpad.
+  apply_command defaults write -g com.apple.trackpad.forceClick -bool true
+
+  # Laptop only: enable haptic detents on a compatible built-in trackpad.
+  apply_command defaults write com.apple.AppleMultitouchTrackpad ActuateDetents -bool true
+
+  # Laptop only: use medium haptic actuation strength (level 1).
+  apply_command defaults write com.apple.AppleMultitouchTrackpad ActuationStrength -int 1
+
+  # Laptop only: use medium first-click pressure (level 1).
+  apply_command defaults write com.apple.AppleMultitouchTrackpad FirstClickThreshold -int 1
+
+  # Laptop only: use medium Force Click pressure (level 1).
+  apply_command defaults write com.apple.AppleMultitouchTrackpad SecondClickThreshold -int 1
+else
+  print 'Skipping built-in trackpad settings: this Mac is not identified as a MacBook.'
+fi
+
+# EXTERNAL APPLE TRACKPAD (LAPTOP OR DESKTOP, WHEN PRESENT)
+
+# External Magic Trackpad: enable tap-to-click.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad Clicking -bool true
+
+# External Magic Trackpad: enable dragging.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad Dragging -bool true
+
+# External Magic Trackpad: do not lock drag operations.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad DragLock -bool false
+
+# External Magic Trackpad: enable two-finger secondary click.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadRightClick -bool true
+
+# External Magic Trackpad: disable corner-based secondary click.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadCornerSecondaryClick -int 0
+
+# External Magic Trackpad: enable horizontal scrolling.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadHorizScroll -bool true
+
+# External Magic Trackpad: enable momentum scrolling.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadMomentumScroll -bool true
+
+# External Magic Trackpad: enable scrolling.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadScroll -bool true
+
+# External Magic Trackpad: enable pinch-to-zoom.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadPinch -bool true
+
+# External Magic Trackpad: enable rotation gestures.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadRotate -bool true
+
+# External Magic Trackpad: disable three-finger drag.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadThreeFingerDrag -bool false
+
+# External Magic Trackpad: use the configured three-finger horizontal swipe behavior (mode 2).
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadThreeFingerHorizSwipeGesture -int 2
+
+# External Magic Trackpad: disable the three-finger tap gesture.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadThreeFingerTapGesture -int 0
+
+# External Magic Trackpad: use the configured three-finger vertical swipe behavior (mode 2).
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadThreeFingerVertSwipeGesture -int 2
+
+# External Magic Trackpad: use the configured four-finger horizontal swipe behavior (mode 2).
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadFourFingerHorizSwipeGesture -int 2
+
+# External Magic Trackpad: use the configured four-finger vertical swipe behavior (mode 2).
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadFourFingerVertSwipeGesture -int 2
+
+# External Magic Trackpad: use the configured four-finger pinch behavior (mode 2).
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadFourFingerPinchGesture -int 2
+
+# External Magic Trackpad: use the configured five-finger pinch behavior (mode 2).
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadFiveFingerPinchGesture -int 2
+
+# External Magic Trackpad: enable two-finger double-tap smart zoom.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadTwoFingerDoubleTapGesture -int 1
+
+# External Magic Trackpad: enable the configured two-finger swipe from the right edge (mode 3).
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadTwoFingerFromRightEdgeSwipeGesture -int 3
+
+# External Magic Trackpad: keep trackpads enabled when a USB mouse is connected.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad USBMouseStopsTrackpad -bool false
+
+# EXTERNAL MAGIC MOUSE (LAPTOP OR DESKTOP, WHEN PRESENT)
+
+# Magic Mouse: use one-button click mode.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.mouse MouseButtonMode -string OneButton
+
+# Magic Mouse: set the left/right touch division to 55 percent.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.mouse MouseButtonDivision -int 55
+
+# Magic Mouse: enable horizontal scrolling.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.mouse MouseHorizontalScroll -bool true
+
+# Magic Mouse: enable vertical scrolling.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.mouse MouseVerticalScroll -bool true
+
+# Magic Mouse: enable momentum scrolling.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.mouse MouseMomentumScroll -bool true
+
+# Magic Mouse: disable one-finger double-tap gestures.
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.mouse MouseOneFingerDoubleTapGesture -int 0
+
+# Magic Mouse: use the configured two-finger double-tap behavior (mode 3).
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.mouse MouseTwoFingerDoubleTapGesture -int 3
+
+# Magic Mouse: use the configured two-finger horizontal swipe behavior (mode 2).
+apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.mouse MouseTwoFingerHorizSwipeGesture -int 2
+
+if ! $check_only; then
+  # Restart Finder so its changed preferences take effect.
+  apply_command killall Finder 2>/dev/null || true
+
+  # Restart the Dock so Dock and Mission Control preferences take effect.
+  apply_command killall Dock 2>/dev/null || true
+
+  # Restart SystemUIServer so screenshot-related preferences are refreshed.
+  apply_command killall SystemUIServer 2>/dev/null || true
+fi
+
+print 'Done. Some input and Safari settings may require logging out and back in.'
