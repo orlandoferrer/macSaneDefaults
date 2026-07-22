@@ -7,8 +7,16 @@
 
 set -eu
 
+# Capture the script location before entering any functions. In zsh, $0 changes
+# to the function name while a function is executing.
+sanedefaults_path="${0:A}"
+
 check_only=false
 force_version=false
+typeset -a command_lines
+typeset -a restore_domains
+typeset -a restore_keys
+typeset -A restore_seen
 
 for argument in "$@"; do
   case "$argument" in
@@ -22,13 +30,178 @@ for argument in "$@"; do
   esac
 done
 
+# Record a command for the apply phase instead of executing it immediately.
+# Delaying execution lets us finish and validate restore.txt before any setting
+# is overwritten.
 apply_command() {
-  if $check_only; then
-    printf '%q ' "$@"
-    printf '\n'
-  else
-    "$@"
+  local argument command_line=''
+  for argument in "$@"; do
+    command_line+="${(q)argument} "
+  done
+  command_lines+=("${command_line% }")
+
+  # Track each defaults key once so restore.txt captures its original state,
+  # even if a future edit writes the same key more than once.
+  if [[ "$1" == defaults && "$2" == write ]]; then
+    local domain="$3"
+    local key="$4"
+    local identity="${domain}:${key}"
+    if [[ -z "${restore_seen[$identity]-}" ]]; then
+      restore_seen[$identity]=1
+      restore_domains+=("$domain")
+      restore_keys+=("$key")
+    fi
   fi
+}
+
+# Write one safely shell-quoted command to the open restore-file descriptor.
+write_restore_command() {
+  local argument
+  for argument in "$@"; do
+    printf '%q ' "$argument" >&3
+  done
+  printf '\n' >&3
+}
+
+# Read all current values and create restore.txt atomically. No defaults writes
+# happen unless this function completes and the generated script passes zsh -n.
+create_restore_script() {
+  local script_directory="${sanedefaults_path:h}"
+  local restore_path="${script_directory}/restore.txt"
+  local timestamp="$(date '+%Y%m%d-%H%M%S')"
+  local archived_path="${script_directory}/restore-${timestamp}.txt"
+  local restore_temp
+  restore_temp="$(mktemp "${script_directory}/.restore.txt.XXXXXX")"
+
+  # Delete an unfinished temporary file if snapshot generation fails.
+  trap '[[ -n "${restore_temp:-}" ]] && rm -f -- "$restore_temp"' EXIT HUP INT TERM
+
+  local machine_uuid
+  machine_uuid="$(ioreg -rd1 -c IOPlatformExpertDevice | awk -F\" '/IOPlatformUUID/{print $(NF-1); exit}')"
+  local account_uid="$(id -u)"
+  local account_name="$(id -un)"
+  local generated_macos_version="$(sw_vers -productVersion)"
+
+  if [[ -z "$machine_uuid" ]]; then
+    print -u2 'Unable to determine this Mac UUID; refusing to create an unbound restore script.'
+    return 70
+  fi
+
+  exec 3>"$restore_temp"
+  print -r -- '#!/bin/zsh' >&3
+  print -r -- '# Restores preferences captured immediately before sanedefaults.txt was applied.' >&3
+  print -r -- "# Generated: $(date '+%Y-%m-%d %H:%M:%S %Z')" >&3
+  print -r -- "# Source macOS: ${generated_macos_version}" >&3
+  print -r -- '# This file is bound to the Mac and user account recorded below.' >&3
+  print -r -- '' >&3
+  print -r -- 'set -eu' >&3
+  print -r -- '' >&3
+  printf 'expected_machine_uuid=%q\n' "$machine_uuid" >&3
+  printf 'expected_account_uid=%q\n' "$account_uid" >&3
+  printf 'expected_account_name=%q\n' "$account_name" >&3
+  printf 'expected_macos_major=%q\n' "${generated_macos_version%%.*}" >&3
+  print -r -- '' >&3
+  print -r -- '# Refuse to restore preferences on a different physical Mac.' >&3
+  print -r -- 'current_machine_uuid="$(ioreg -rd1 -c IOPlatformExpertDevice | awk -F\" '\''/IOPlatformUUID/{print $(NF-1); exit}'\'')"' >&3
+  print -r -- 'if [[ "$current_machine_uuid" != "$expected_machine_uuid" ]]; then' >&3
+  print -r -- '  print -u2 "This restore file belongs to a different Mac; no changes were made."' >&3
+  print -r -- '  exit 70' >&3
+  print -r -- 'fi' >&3
+  print -r -- '' >&3
+  print -r -- '# Refuse to restore preferences from a different user account.' >&3
+  print -r -- 'if [[ "$(id -u)" != "$expected_account_uid" || "$(id -un)" != "$expected_account_name" ]]; then' >&3
+  print -r -- '  print -u2 "This restore file belongs to a different user account; no changes were made."' >&3
+  print -r -- '  exit 71' >&3
+  print -r -- 'fi' >&3
+  print -r -- '' >&3
+  print -r -- '# Refuse to restore across macOS major versions because preference keys can change.' >&3
+  print -r -- 'current_macos_version="$(sw_vers -productVersion)"' >&3
+  print -r -- 'if [[ "${current_macos_version%%.*}" != "$expected_macos_major" ]]; then' >&3
+  print -r -- '  print -u2 "This restore file was generated for a different macOS major version; no changes were made."' >&3
+  print -r -- '  exit 72' >&3
+  print -r -- 'fi' >&3
+  print -r -- '' >&3
+  print -r -- '# Require explicit confirmation, then verify that Safari is not running.' >&3
+  print -r -- 'print "Safari must be closed before preferences are restored."' >&3
+  print -r -- 'safari_confirmation=""' >&3
+  print -r -- 'if ! read -r "safari_confirmation?Type CLOSED after quitting Safari, or press Control-C to cancel: "; then' >&3
+  print -r -- '  print -u2 "\nConfirmation was not received; no changes were made."' >&3
+  print -r -- '  exit 68' >&3
+  print -r -- 'fi' >&3
+  print -r -- 'if [[ "${(L)safari_confirmation}" != closed ]]; then' >&3
+  print -r -- '  print -u2 "Confirmation did not match CLOSED; no changes were made."' >&3
+  print -r -- '  exit 68' >&3
+  print -r -- 'fi' >&3
+  print -r -- 'if pgrep -x Safari >/dev/null 2>&1; then' >&3
+  print -r -- '  print -u2 "Safari is still running. Quit it completely, then run this restore file again."' >&3
+  print -r -- '  exit 69' >&3
+  print -r -- 'fi' >&3
+  print -r -- '' >&3
+
+  local index domain key type_description value type_flag
+  for (( index = 1; index <= ${#restore_domains}; index++ )); do
+    domain="${restore_domains[$index]}"
+    key="${restore_keys[$index]}"
+
+    if type_description="$(defaults read-type "$domain" "$key" 2>/dev/null)"; then
+      value="$(defaults read "$domain" "$key")"
+      case "$type_description" in
+        'Type is boolean')
+          type_flag='-bool'
+          [[ "$value" == 1 ]] && value=true || value=false
+          ;;
+        'Type is integer') type_flag='-int' ;;
+        'Type is float') type_flag='-float' ;;
+        'Type is string') type_flag='-string' ;;
+        *)
+          exec 3>&-
+          print -u2 "Unsupported previous type for ${domain} ${key}: ${type_description}"
+          print -u2 'No preferences were changed.'
+          return 73
+          ;;
+      esac
+
+      print -r -- "# Restore the previous value of ${domain} ${key}." >&3
+      write_restore_command defaults write "$domain" "$key" "$type_flag" "$value"
+    else
+      print -r -- "# Delete ${domain} ${key} because it did not exist before sanedefaults.txt was applied." >&3
+      # Ignore a missing-key error so restore.txt remains safe to run twice.
+      printf 'defaults delete %q %q 2>/dev/null || true\n' "$domain" "$key" >&3
+    fi
+    print -r -- '' >&3
+  done
+
+  print -r -- '# Restart Finder so restored Finder preferences take effect.' >&3
+  print -r -- 'killall Finder 2>/dev/null || true' >&3
+  print -r -- '' >&3
+  print -r -- '# Restart the Dock so restored Dock and Mission Control preferences take effect.' >&3
+  print -r -- 'killall Dock 2>/dev/null || true' >&3
+  print -r -- '' >&3
+  print -r -- '# Restart SystemUIServer so restored screenshot preferences take effect.' >&3
+  print -r -- 'killall SystemUIServer 2>/dev/null || true' >&3
+  print -r -- '' >&3
+  print -r -- "print 'Preferences restored. Some settings may require logging out and back in.'" >&3
+  exec 3>&-
+
+  chmod 600 "$restore_temp"
+  if ! zsh -n "$restore_temp"; then
+    print -u2 'Generated restore script failed syntax validation; no preferences were changed.'
+    return 74
+  fi
+
+  # Preserve the preceding restore point instead of overwriting it.
+  if [[ -e "$restore_path" ]]; then
+    if [[ -e "$archived_path" ]]; then
+      archived_path="${script_directory}/restore-${timestamp}-$$.txt"
+    fi
+    mv "$restore_path" "$archived_path"
+    print "Previous restore file archived as ${archived_path:t}"
+  fi
+
+  mv "$restore_temp" "$restore_path"
+  restore_temp=''
+  trap - EXIT HUP INT TERM
+  print "Restore script created and validated: $restore_path"
 }
 
 source_macos_major=26
@@ -41,12 +214,28 @@ if [[ "$target_macos_major" != "$source_macos_major" ]] && ! $force_version; the
   exit 65
 fi
 
-if ! $check_only && pgrep -x Safari >/dev/null 2>&1; then
-  print -u2 "Quit Safari before applying these preferences so it does not overwrite them."
-  exit 69
+if ! $check_only; then
+  print 'Safari must be closed before preferences are backed up or changed.'
+  print 'Quit Safari now, including all of its windows.'
+  safari_confirmation=''
+  if ! read -r "safari_confirmation?Type CLOSED after quitting Safari, or press Control-C to cancel: "; then
+    print -u2 '\nConfirmation was not received; no changes were made.'
+    exit 68
+  fi
+
+  if [[ "${(L)safari_confirmation}" != closed ]]; then
+    print -u2 'Confirmation did not match CLOSED; no changes were made.'
+    exit 68
+  fi
+
+  # Confirmation prevents an accidental run; this process check verifies it.
+  if pgrep -x Safari >/dev/null 2>&1; then
+    print -u2 'Safari is still running. Quit it completely, then run this script again.'
+    exit 69
+  fi
 fi
 
-print "Applying preferences exported from macOS 26.5.2 to macOS $target_macos_version"
+print "Preparing preferences exported from macOS 26.5.2 for macOS $target_macos_version"
 
 # GENERAL, KEYBOARD, AND TEXT INPUT
 
@@ -344,15 +533,35 @@ apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.mouse Mou
 # Magic Mouse: use the configured two-finger horizontal swipe behavior (mode 2).
 apply_command defaults write com.apple.driver.AppleBluetoothMultitouch.mouse MouseTwoFingerHorizSwipeGesture -int 2
 
-if ! $check_only; then
-  # Restart Finder so its changed preferences take effect.
-  apply_command killall Finder 2>/dev/null || true
-
-  # Restart the Dock so Dock and Mission Control preferences take effect.
-  apply_command killall Dock 2>/dev/null || true
-
-  # Restart SystemUIServer so screenshot-related preferences are refreshed.
-  apply_command killall SystemUIServer 2>/dev/null || true
+# In check mode, print the exact commands and exit without creating restore.txt
+# or changing preferences.
+if $check_only; then
+  local_command=''
+  for local_command in "${command_lines[@]}"; do
+    print -r -- "$local_command"
+  done
+  print 'Check complete. No restore file was created and no preferences were changed.'
+  exit 0
 fi
 
-print 'Done. Some input and Safari settings may require logging out and back in.'
+# Snapshot every affected property before the first defaults write. If reading,
+# writing, or validating the restore script fails, set -e stops execution here.
+create_restore_script
+
+print "Applying ${#command_lines} preference commands..."
+command_line=''
+for command_line in "${command_lines[@]}"; do
+  eval "$command_line"
+done
+
+# Restart Finder so its changed preferences take effect.
+killall Finder 2>/dev/null || true
+
+# Restart the Dock so Dock and Mission Control preferences take effect.
+killall Dock 2>/dev/null || true
+
+# Restart SystemUIServer so screenshot-related preferences are refreshed.
+killall SystemUIServer 2>/dev/null || true
+
+print 'Done. To undo these changes, quit Safari and run: zsh restore.txt'
+print 'Some input and Safari settings may require logging out and back in.'
